@@ -31,8 +31,8 @@ from opensora.utils.ckpt_utils import load_checkpoint
 class STDiTBlock(nn.Module):
     def __init__(
         self,
-        hidden_size,
-        num_heads,
+        hidden_size, # 1152
+        num_heads, # 16
         d_s=None,
         d_t=None,
         mlp_ratio=4.0,
@@ -42,47 +42,47 @@ class STDiTBlock(nn.Module):
         enable_sequence_parallelism=False,
     ):
         super().__init__()
-        self.hidden_size = hidden_size
-        self.enable_flashattn = enable_flashattn
-        self._enable_sequence_parallelism = enable_sequence_parallelism
+        self.hidden_size = hidden_size # 1152
+        self.enable_flashattn = enable_flashattn # True
+        self._enable_sequence_parallelism = enable_sequence_parallelism # False
 
         if enable_sequence_parallelism:
             self.attn_cls = SeqParallelAttention
             self.mha_cls = SeqParallelMultiHeadCrossAttention
         else:
-            self.attn_cls = Attention
-            self.mha_cls = MultiHeadCrossAttention
+            self.attn_cls = Attention # NOTE, here, <class 'opensora.models.layers.blocks.Attention'>
+            self.mha_cls = MultiHeadCrossAttention # <class 'opensora.models.layers.blocks.MultiHeadCrossAttention'>
 
-        self.norm1 = get_layernorm(hidden_size, eps=1e-6, affine=False, use_kernel=enable_layernorm_kernel)
+        self.norm1 = get_layernorm(hidden_size, eps=1e-6, affine=False, use_kernel=enable_layernorm_kernel) # FusedLayerNorm(torch.Size([1152]), eps=1e-06, elementwise_affine=False)
         self.attn = self.attn_cls(
-            hidden_size,
-            num_heads=num_heads,
+            hidden_size, # 1152
+            num_heads=num_heads, # 16
             qkv_bias=True,
-            enable_flashattn=enable_flashattn,
+            enable_flashattn=enable_flashattn, # True
         )
         self.cross_attn = self.mha_cls(hidden_size, num_heads)
-        self.norm2 = get_layernorm(hidden_size, eps=1e-6, affine=False, use_kernel=enable_layernorm_kernel)
+        self.norm2 = get_layernorm(hidden_size, eps=1e-6, affine=False, use_kernel=enable_layernorm_kernel) # FusedLayerNorm(torch.Size([1152]), eps=1e-06, elementwise_affine=False)
         self.mlp = Mlp(
             in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
         )
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        self.scale_shift_table = nn.Parameter(torch.randn(6, hidden_size) / hidden_size**0.5)
+        self.scale_shift_table = nn.Parameter(torch.randn(6, hidden_size) / hidden_size**0.5) # NOTE for what? 6 is?
 
         # temporal attention
-        self.d_s = d_s
-        self.d_t = d_t
+        self.d_s = d_s # 256
+        self.d_t = d_t # 16
 
-        if self._enable_sequence_parallelism:
+        if self._enable_sequence_parallelism: # False, not in
             sp_size = dist.get_world_size(get_sequence_parallel_group())
             # make sure d_t is divisible by sp_size
             assert d_t % sp_size == 0
             self.d_t = d_t // sp_size
 
         self.attn_temp = self.attn_cls(
-            hidden_size,
-            num_heads=num_heads,
+            hidden_size, # 1152
+            num_heads=num_heads, # 16
             qkv_bias=True,
-            enable_flashattn=self.enable_flashattn,
+            enable_flashattn=self.enable_flashattn, # True
         )
 
     def forward(self, x, y, t, mask=None, tpe=None):
@@ -142,55 +142,55 @@ class STDiT(nn.Module):
         enable_sequence_parallelism=False,
     ):
         super().__init__()
-        self.pred_sigma = pred_sigma
-        self.in_channels = in_channels
-        self.out_channels = in_channels * 2 if pred_sigma else in_channels
-        self.hidden_size = hidden_size
-        self.patch_size = patch_size
-        self.input_size = input_size
-        num_patches = np.prod([input_size[i] // patch_size[i] for i in range(3)])
+        self.pred_sigma = pred_sigma # True
+        self.in_channels = in_channels # 4
+        self.out_channels = in_channels * 2 if pred_sigma else in_channels # 8
+        self.hidden_size = hidden_size # 1152
+        self.patch_size = patch_size # (1, 2, 2)
+        self.input_size = input_size # (16, 32, 32)
+        num_patches = np.prod([input_size[i] // patch_size[i] for i in range(3)]) # 4096
         self.num_patches = num_patches
-        self.num_temporal = input_size[0] // patch_size[0]
-        self.num_spatial = num_patches // self.num_temporal
-        self.num_heads = num_heads
-        self.dtype = dtype
-        self.no_temporal_pos_emb = no_temporal_pos_emb
-        self.depth = depth
-        self.mlp_ratio = mlp_ratio
-        self.enable_flashattn = enable_flashattn
-        self.enable_layernorm_kernel = enable_layernorm_kernel
-        self.space_scale = space_scale
-        self.time_scale = time_scale
-
+        self.num_temporal = input_size[0] // patch_size[0] # 16
+        self.num_spatial = num_patches // self.num_temporal # 256
+        self.num_heads = num_heads # 16
+        self.dtype = dtype # torch.float16
+        self.no_temporal_pos_emb = no_temporal_pos_emb # False
+        self.depth = depth # 28
+        self.mlp_ratio = mlp_ratio # 4.0
+        self.enable_flashattn = enable_flashattn # True
+        self.enable_layernorm_kernel = enable_layernorm_kernel # True
+        self.space_scale = space_scale # 0.5
+        self.time_scale = time_scale # 1.0
+        import ipdb; ipdb.set_trace()
         self.register_buffer("pos_embed", self.get_spatial_pos_embed())
         self.register_buffer("pos_embed_temporal", self.get_temporal_pos_embed())
-
+        import ipdb; ipdb.set_trace()
         self.x_embedder = PatchEmbed3D(patch_size, in_channels, hidden_size)
         self.t_embedder = TimestepEmbedder(hidden_size)
         self.t_block = nn.Sequential(nn.SiLU(), nn.Linear(hidden_size, 6 * hidden_size, bias=True))
         self.y_embedder = CaptionEmbedder(
-            in_channels=caption_channels,
-            hidden_size=hidden_size,
-            uncond_prob=class_dropout_prob,
-            act_layer=approx_gelu,
-            token_num=model_max_length,
+            in_channels=caption_channels, # 4096
+            hidden_size=hidden_size, # 1152
+            uncond_prob=class_dropout_prob, # 0.1
+            act_layer=approx_gelu, # <function <lambda> at 0x7f6b34164790>
+            token_num=model_max_length, # 120
         )
 
-        drop_path = [x.item() for x in torch.linspace(0, drop_path, depth)]
+        drop_path = [x.item() for x in torch.linspace(0, drop_path, depth)] # 28, all 0.0
         self.blocks = nn.ModuleList(
             [
                 STDiTBlock(
-                    self.hidden_size,
-                    self.num_heads,
-                    mlp_ratio=self.mlp_ratio,
-                    drop_path=drop_path[i],
-                    enable_flashattn=self.enable_flashattn,
-                    enable_layernorm_kernel=self.enable_layernorm_kernel,
-                    enable_sequence_parallelism=enable_sequence_parallelism,
-                    d_t=self.num_temporal,
-                    d_s=self.num_spatial,
+                    self.hidden_size, # 1152
+                    self.num_heads, # 16
+                    mlp_ratio=self.mlp_ratio, # 4.0
+                    drop_path=drop_path[i], # 0.0
+                    enable_flashattn=self.enable_flashattn, # True
+                    enable_layernorm_kernel=self.enable_layernorm_kernel, # True
+                    enable_sequence_parallelism=enable_sequence_parallelism, # False
+                    d_t=self.num_temporal, # 16
+                    d_s=self.num_spatial, # 256
                 )
-                for i in range(self.depth)
+                for i in range(self.depth) # self.depth=28
             ]
         )
         self.final_layer = T2IFinalLayer(hidden_size, np.prod(self.patch_size), self.out_channels)
@@ -198,7 +198,7 @@ class STDiT(nn.Module):
         # init model
         self.initialize_weights()
         self.initialize_temporal()
-        if freeze is not None:
+        if freeze is not None: # is None, not in
             assert freeze in ["not_temporal", "text"]
             if freeze == "not_temporal":
                 self.freeze_not_temporal()
@@ -210,7 +210,7 @@ class STDiT(nn.Module):
         if enable_sequence_parallelism:
             self.sp_rank = dist.get_rank(get_sequence_parallel_group())
         else:
-            self.sp_rank = None
+            self.sp_rank = None # here, NOTE
 
     def forward(self, x, timestep, y, mask=None):
         """
@@ -314,20 +314,20 @@ class STDiT(nn.Module):
 
     def get_spatial_pos_embed(self, grid_size=None):
         if grid_size is None:
-            grid_size = self.input_size[1:]
+            grid_size = self.input_size[1:] # [32, 32]
         pos_embed = get_2d_sincos_pos_embed(
-            self.hidden_size,
-            (grid_size[0] // self.patch_size[1], grid_size[1] // self.patch_size[2]),
-            scale=self.space_scale,
+            self.hidden_size, # 1152
+            (grid_size[0] // self.patch_size[1], grid_size[1] // self.patch_size[2]), # 16, 16
+            scale=self.space_scale, # 0.5
         )
         pos_embed = torch.from_numpy(pos_embed).float().unsqueeze(0).requires_grad_(False)
         return pos_embed
 
     def get_temporal_pos_embed(self):
         pos_embed = get_1d_sincos_pos_embed(
-            self.hidden_size,
-            self.input_size[0] // self.patch_size[0],
-            scale=self.time_scale,
+            self.hidden_size, # 1152
+            self.input_size[0] // self.patch_size[0], # 16 // 1
+            scale=self.time_scale, # 1.0
         )
         pos_embed = torch.from_numpy(pos_embed).float().unsqueeze(0).requires_grad_(False)
         return pos_embed
@@ -357,25 +357,25 @@ class STDiT(nn.Module):
 
         self.apply(_basic_init)
 
-        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
+        # 1 Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
         w = self.x_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
-        # Initialize timestep embedding MLP:
+        # 2 3 Initialize timestep embedding MLP:
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
         nn.init.normal_(self.t_block[1].weight, std=0.02)
 
-        # Initialize caption embedding MLP:
+        # 4 Initialize caption embedding MLP:
         nn.init.normal_(self.y_embedder.y_proj.fc1.weight, std=0.02)
         nn.init.normal_(self.y_embedder.y_proj.fc2.weight, std=0.02)
 
-        # Zero-out adaLN modulation layers in PixArt blocks:
+        # 5 Zero-out adaLN modulation layers in PixArt blocks:
         for block in self.blocks:
             nn.init.constant_(block.cross_attn.proj.weight, 0)
             nn.init.constant_(block.cross_attn.proj.bias, 0)
 
-        # Zero-out output layers:
+        # 6 Zero-out output layers:
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 

@@ -16,9 +16,15 @@ vae = dict(
     from_pretrained="stabilityai/sd-vae-ft-ema",
     micro_batch_size=4,
 )
+#
+#import ipdb; ipdb.set_trace()
+
+#PATH="./pretrained_models/t5_ckpts/t5-v1_1-xxl/"
 text_encoder = dict(
     type="t5",
     from_pretrained="DeepFloyd/t5-v1_1-xxl",
+    #from_pretrained="./pretrained_models/t5_ckpts/t5-v1_1-xxl/",
+    #from_pretrained=PATH, 
     model_max_length=120,
 )
 scheduler = dict(

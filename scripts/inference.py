@@ -28,6 +28,7 @@ def main():
 
     # init distributed
     colossalai.launch_from_torch({})
+    import ipdb; ipdb.set_trace() # NOTE
     coordinator = DistCoordinator()
 
     if coordinator.world_size > 1:
@@ -53,10 +54,12 @@ def main():
     # 3.1. build model
     input_size = (cfg.num_frames, *cfg.image_size)
     vae = build_module(cfg.vae, MODELS)
-    latent_size = vae.get_latent_size(input_size)
+    latent_size = vae.get_latent_size(input_size) # [16, 32, 32]
+    import ipdb; ipdb.set_trace()
     text_encoder = build_module(cfg.text_encoder, MODELS, device=device)  # T5 must be fp32
+    import ipdb; ipdb.set_trace()
     model = build_module(
-        cfg.model,
+        cfg.model, # NOTE very important
         MODELS,
         input_size=latent_size,
         in_channels=vae.out_channels,
@@ -66,11 +69,13 @@ def main():
         enable_sequence_parallelism=enable_sequence_parallelism,
     )
     text_encoder.y_embedder = model.y_embedder  # hack for classifier-free guidance
-
+    
+    import ipdb; ipdb.set_trace()
     # 3.2. move to device & eval
     vae = vae.to(device, dtype).eval()
     model = model.to(device, dtype).eval()
 
+    import ipdb; ipdb.set_trace()
     # 3.3. build scheduler
     scheduler = build_module(cfg.scheduler, SCHEDULERS)
 
@@ -82,6 +87,7 @@ def main():
         ar = torch.tensor([[image_size[0] / image_size[1]]], device=device, dtype=dtype).repeat(cfg.batch_size, 1)
         model_args["data_info"] = dict(ar=ar, hw=hw)
 
+    import ipdb; ipdb.set_trace()
     # ======================================================
     # 4. inference
     # ======================================================
@@ -89,6 +95,7 @@ def main():
     save_dir = cfg.save_dir
     os.makedirs(save_dir, exist_ok=True)
     for i in range(0, len(prompts), cfg.batch_size):
+        import ipdb; ipdb.set_trace()
         batch_prompts = prompts[i : i + cfg.batch_size]
         samples = scheduler.sample(
             model,
@@ -98,6 +105,7 @@ def main():
             device=device,
             additional_args=model_args,
         )
+        import ipdb; ipdb.set_trace()
         samples = vae.decode(samples.to(dtype))
 
         if coordinator.is_master():

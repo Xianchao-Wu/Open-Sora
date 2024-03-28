@@ -11,9 +11,9 @@ class VideoAutoencoderKL(nn.Module):
     def __init__(self, from_pretrained=None, micro_batch_size=None):
         super().__init__()
         self.module = AutoencoderKL.from_pretrained(from_pretrained)
-        self.out_channels = self.module.config.latent_channels
+        self.out_channels = self.module.config.latent_channels # 4
         self.patch_size = (1, 8, 8)
-        self.micro_batch_size = micro_batch_size
+        self.micro_batch_size = micro_batch_size # 4
 
     def encode(self, x):
         # x: (B, C, T, H, W)

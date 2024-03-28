@@ -58,6 +58,7 @@ def merge_args(cfg, args, training=False):
 
 def parse_configs(training=False):
     args = parse_args(training)
+    #import ipdb; ipdb.set_trace()
     cfg = Config.fromfile(args.config)
     cfg = merge_args(cfg, args, training)
     return cfg

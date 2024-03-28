@@ -76,17 +76,17 @@ class PatchEmbed3D(nn.Module):
         flatten=True,
     ):
         super().__init__()
-        self.patch_size = patch_size
-        self.flatten = flatten
+        self.patch_size = patch_size # (1, 2, 2)
+        self.flatten = flatten # True
 
-        self.in_chans = in_chans
-        self.embed_dim = embed_dim
+        self.in_chans = in_chans # in_channels = 4
+        self.embed_dim = embed_dim # 1152
 
-        self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = nn.Conv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size) # Conv3d(4, 1152, kernel_size=(1, 2, 2), stride=(1, 2, 2)), 这里的输入通道数4，还是后续值得深入学习研究的 TODO
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
         else:
-            self.norm = None
+            self.norm = None # is None
 
     def forward(self, x):
         """Forward function."""
@@ -387,14 +387,14 @@ class TimestepEmbedder(nn.Module):
     Embeds scalar timesteps into vector representations.
     """
 
-    def __init__(self, hidden_size, frequency_embedding_size=256):
+    def __init__(self, hidden_size, frequency_embedding_size=256): # 1152, 256
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(frequency_embedding_size, hidden_size, bias=True),
             nn.SiLU(),
             nn.Linear(hidden_size, hidden_size, bias=True),
         )
-        self.frequency_embedding_size = frequency_embedding_size
+        self.frequency_embedding_size = frequency_embedding_size # 256
 
     @staticmethod
     def timestep_embedding(t, dim, max_period=10000):
@@ -498,8 +498,8 @@ class CaptionEmbedder(nn.Module):
         self.y_proj = Mlp(
             in_features=in_channels, hidden_features=hidden_size, out_features=hidden_size, act_layer=act_layer, drop=0
         )
-        self.register_buffer("y_embedding", nn.Parameter(torch.randn(token_num, in_channels) / in_channels**0.5))
-        self.uncond_prob = uncond_prob
+        self.register_buffer("y_embedding", nn.Parameter(torch.randn(token_num, in_channels) / in_channels**0.5)) # torch.Size([120, 4096])
+        self.uncond_prob = uncond_prob # 0.1
 
     def token_drop(self, caption, force_drop_ids=None):
         """
@@ -534,19 +534,19 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=
     return:
     pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
-    if not isinstance(grid_size, tuple):
+    if not isinstance(grid_size, tuple): # not in, grid_size=(16, 16)
         grid_size = (grid_size, grid_size)
 
-    grid_h = np.arange(grid_size[0], dtype=np.float32) / scale
-    grid_w = np.arange(grid_size[1], dtype=np.float32) / scale
-    if base_size is not None:
+    grid_h = np.arange(grid_size[0], dtype=np.float32) / scale # array([ 0.,  2.,  4.,  6.,  8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30.], dtype=float32)
+    grid_w = np.arange(grid_size[1], dtype=np.float32) / scale # array([ 0.,  2.,  4.,  6.,  8., 10., 12., 14., 16., 18., 20., 22., 24., 26., 28., 30.], dtype=float32)
+    if base_size is not None: # None, not in
         grid_h *= base_size / grid_size[0]
         grid_w *= base_size / grid_size[1]
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first, 0-th: (16, 16); 1-th: (16, 16)
+    grid = np.stack(grid, axis=0) # (2, 16, 16)
 
-    grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
+    grid = grid.reshape([2, 1, grid_size[1], grid_size[0]]) # (2, 1, 16, 16)
+    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid) # (256, 1152)
     if cls_token and extra_tokens > 0:
         pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
     return pos_embed
@@ -567,7 +567,7 @@ def get_1d_sincos_pos_embed(embed_dim, length, scale=1.0):
     pos = np.arange(0, length)[..., None] / scale
     return get_1d_sincos_pos_embed_from_grid(embed_dim, pos)
 
-
+# embed_dim=1152, pos.shape=(16, 1) and pos=[[0], ..., [15]]
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     """
     embed_dim: output dimension for each position
@@ -575,15 +575,15 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     out: (M, D)
     """
     assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
-    omega /= embed_dim / 2.0
+    omega = np.arange(embed_dim // 2, dtype=np.float64) # 1152/2=576, 是0到575
+    omega /= embed_dim / 2.0 # (576,)
     omega = 1.0 / 10000**omega  # (D/2,)
 
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
+    pos = pos.reshape(-1)  # (M,), e.g., (16,)
+    out = np.einsum("m,d->md", pos, omega)  # (M, D/2), outer product; (16, 576)
 
     emb_sin = np.sin(out)  # (M, D/2)
     emb_cos = np.cos(out)  # (M, D/2)
 
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D), e.g., (16, 1152)
     return emb
