@@ -12,7 +12,7 @@ from .respace import SpacedDiffusion, space_timesteps
 class IDDPM(SpacedDiffusion):
     def __init__(
         self,
-        num_sampling_steps=None,
+        num_sampling_steps=None, # 100
         timestep_respacing=None,
         noise_schedule="linear",
         use_kl=False,
@@ -20,8 +20,8 @@ class IDDPM(SpacedDiffusion):
         predict_xstart=False,
         learn_sigma=True,
         rescale_learned_sigmas=False,
-        diffusion_steps=1000,
-        cfg_scale=4.0,
+        diffusion_steps=1000, # 1000
+        cfg_scale=4.0, # 7.0
     ):
         betas = gd.get_named_beta_schedule(noise_schedule, diffusion_steps)
         if use_kl:
@@ -44,7 +44,7 @@ class IDDPM(SpacedDiffusion):
                 if not learn_sigma
                 else gd.ModelVarType.LEARNED_RANGE
             ),
-            loss_type=loss_type,
+            loss_type=loss_type, # <LossType.MSE: 1>
             # rescale_timesteps=rescale_timesteps,
         )
 
@@ -52,16 +52,16 @@ class IDDPM(SpacedDiffusion):
 
     def sample(
         self,
-        model,
-        text_encoder,
-        z_size,
+        model, # <class 'opensora.models.stdit.stdit.STDiT'>
+        text_encoder, # <class 'opensora.models.text_encoder.t5.T5Encoder'>
+        z_size, # (4, 16, 32, 32)
         prompts,
         device,
         additional_args=None,
     ):
-        n = len(prompts)
-        z = torch.randn(n, *z_size, device=device)
-        z = torch.cat([z, z], 0)
+        n = len(prompts) # n=1, for 1 prompt
+        z = torch.randn(n, *z_size, device=device) # [1, 4, 16, 32, 32]，这是初始噪声的形状
+        z = torch.cat([z, z], 0) # torch.Size([2, 4, 16, 32, 32])
         model_args = text_encoder.encode(prompts)
         y_null = text_encoder.null(n)
         model_args["y"] = torch.cat([model_args["y"], y_null], 0)

@@ -108,12 +108,12 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     if schedule_name == "linear":
         # Linear schedule from Ho et al, extended to work for any number of
         # diffusion steps.
-        scale = 1000 / num_diffusion_timesteps
+        scale = 1000 / num_diffusion_timesteps # 1.0
         return get_beta_schedule(
             "linear",
-            beta_start=scale * 0.0001,
-            beta_end=scale * 0.02,
-            num_diffusion_timesteps=num_diffusion_timesteps,
+            beta_start=scale * 0.0001, # 0.0001
+            beta_end=scale * 0.02, # 0.02
+            num_diffusion_timesteps=num_diffusion_timesteps, # 1000
         )
     elif schedule_name == "squaredcos_cap_v2":
         return betas_for_alpha_bar(
@@ -153,17 +153,17 @@ class GaussianDiffusion:
     """
 
     def __init__(self, *, betas, model_mean_type, model_var_type, loss_type):
-        self.model_mean_type = model_mean_type
-        self.model_var_type = model_var_type
-        self.loss_type = loss_type
+        self.model_mean_type = model_mean_type # ModelMeanType.EPSILON: 3
+        self.model_var_type = model_var_type # ModelVarType.LEARNED_RANGE: 4
+        self.loss_type = loss_type # LossType.MSE: 1
 
         # Use float64 for accuracy.
         betas = np.array(betas, dtype=np.float64)
-        self.betas = betas
+        self.betas = betas # (1000,)
         assert len(betas.shape) == 1, "betas must be 1-D"
         assert (betas > 0).all() and (betas <= 1).all()
 
-        self.num_timesteps = int(betas.shape[0])
+        self.num_timesteps = int(betas.shape[0]) # 1000
 
         alphas = 1.0 - betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)

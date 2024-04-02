@@ -92,18 +92,18 @@ def main():
     # 4. inference
     # ======================================================
     sample_idx = 0
-    save_dir = cfg.save_dir
+    save_dir = cfg.save_dir # './outputs/samples/'
     os.makedirs(save_dir, exist_ok=True)
-    for i in range(0, len(prompts), cfg.batch_size):
+    for i in range(0, len(prompts), cfg.batch_size): # cfg.batch_size=1
         import ipdb; ipdb.set_trace()
         batch_prompts = prompts[i : i + cfg.batch_size]
         samples = scheduler.sample(
-            model,
-            text_encoder,
-            z_size=(vae.out_channels, *latent_size),
+            model, # <class 'opensora.models.stdit.stdit.STDiT'>
+            text_encoder, # <opensora.models.text_encoder.t5.T5Encoder object at 0x7f8618367d90>
+            z_size=(vae.out_channels, *latent_size), # vae.out_channels=4, latent_size=[16, 32, 32]
             prompts=batch_prompts,
-            device=device,
-            additional_args=model_args,
+            device=device, # 'cuda'
+            additional_args=model_args, # {}
         )
         import ipdb; ipdb.set_trace()
         samples = vae.decode(samples.to(dtype))

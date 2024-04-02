@@ -77,17 +77,18 @@ class SpacedDiffusion(GaussianDiffusion):
     def __init__(self, use_timesteps, **kwargs):
         self.use_timesteps = set(use_timesteps)
         self.timestep_map = []
-        self.original_num_steps = len(kwargs["betas"])
+        self.original_num_steps = len(kwargs["betas"]) # 1000
 
-        base_diffusion = GaussianDiffusion(**kwargs)  # pylint: disable=missing-kwoa
+        base_diffusion = GaussianDiffusion(**kwargs)  # pylint: disable=missing-kwoa NOTE
         last_alpha_cumprod = 1.0
         new_betas = []
-        for i, alpha_cumprod in enumerate(base_diffusion.alphas_cumprod):
-            if i in self.use_timesteps:
+        for i, alpha_cumprod in enumerate(base_diffusion.alphas_cumprod): # 1000 elements:
+            if i in self.use_timesteps: # self.use_timesteps={0, 10, 20, ..., 989, 999}, 里面一共100个元素
                 new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
                 last_alpha_cumprod = alpha_cumprod
                 self.timestep_map.append(i)
         kwargs["betas"] = np.array(new_betas)
+        import ipdb; ipdb.set_trace()
         super().__init__(**kwargs)
 
     def p_mean_variance(self, model, *args, **kwargs):  # pylint: disable=signature-differs
