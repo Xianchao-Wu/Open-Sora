@@ -63,26 +63,27 @@ class IDDPM(SpacedDiffusion):
         z = torch.randn(n, *z_size, device=device) # [1, 4, 16, 32, 32]，这是初始噪声的形状
         z = torch.cat([z, z], 0) # torch.Size([2, 4, 16, 32, 32])
         model_args = text_encoder.encode(prompts)
-        y_null = text_encoder.null(n)
-        model_args["y"] = torch.cat([model_args["y"], y_null], 0)
+        y_null = text_encoder.null(n) # torch.Size([1, 1, 120, 4096]) TODO what is 120?
+        model_args["y"] = torch.cat([model_args["y"], y_null], 0) # cat [1, 1, 120, 4096] and [1, 1, 120, 4096] together, the result is now [2, 1, 120, 4096]
         if additional_args is not None:
             model_args.update(additional_args)
 
-        forward = partial(forward_with_cfg, model, cfg_scale=self.cfg_scale)
+        forward = partial(forward_with_cfg, model, cfg_scale=self.cfg_scale) # 1=需要被扩展的函数；2=需要被固定的位置参数；3=需要被固定的关键字参数.
         samples = self.p_sample_loop(
             forward,
-            z.shape,
+            z.shape, # torch.Size([2, 4, 16, 32, 32])
             z,
             clip_denoised=False,
-            model_kwargs=model_args,
+            model_kwargs=model_args, # 一个词典, 'y': [2, 1, 120, 4096], 'mask': [1, 120]
             progress=True,
-            device=device,
+            device=device, # 'cuda'
         )
         samples, _ = samples.chunk(2, dim=0)
         return samples
 
 
 def forward_with_cfg(model, x, timestep, y, cfg_scale, **kwargs):
+    import ipdb; ipdb.set_trace()
     # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
     half = x[: len(x) // 2]
     combined = torch.cat([half, half], dim=0)
@@ -93,3 +94,4 @@ def forward_with_cfg(model, x, timestep, y, cfg_scale, **kwargs):
     half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
     eps = torch.cat([half_eps, half_eps], dim=0)
     return torch.cat([eps, rest], dim=1)
+

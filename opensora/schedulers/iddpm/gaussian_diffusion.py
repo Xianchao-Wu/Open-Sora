@@ -262,9 +262,9 @@ class GaussianDiffusion:
         if model_kwargs is None:
             model_kwargs = {}
 
-        B, C = x.shape[:2]
+        B, C = x.shape[:2] # B for batch, C for channel, currently B=2, C=4
         assert t.shape == (B,)
-        model_output = model(x, t, **model_kwargs)
+        model_output = model(x, t, **model_kwargs) # NOTE 这个非常重要了！
         if isinstance(model_output, tuple):
             model_output, extra = model_output
         else:
@@ -361,13 +361,13 @@ class GaussianDiffusion:
 
     def p_sample(
         self,
-        model,
-        x,
-        t,
-        clip_denoised=True,
-        denoised_fn=None,
-        cond_fn=None,
-        model_kwargs=None,
+        model, # <class 'functools.partial'>
+        x, # torch.Size([2, 4, 16, 32, 32]), 这个应该是目前为止生成的视频video
+        t, # tensor([99, 99], device='cuda:0')
+        clip_denoised=True, # False
+        denoised_fn=None, # None
+        cond_fn=None, # None
+        model_kwargs=None, # a dict with 'y': torch.Size([2, 1, 120, 4096]), and 'mask': torch.Size([1, 120])
     ):
         """
         Sample x_{t-1} from the model at the given timestep.
@@ -392,25 +392,25 @@ class GaussianDiffusion:
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
-        )
-        noise = th.randn_like(x)
-        nonzero_mask = (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))  # no noise when t == 0
-        if cond_fn is not None:
+        ) # step 1, mean and variance for x_t-1
+        noise = th.randn_like(x) # epsilon 当前步的噪声, step 2
+        nonzero_mask = (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))  # no noise when t == 0, step 3
+        if cond_fn is not None: # is None, not in NOTE, step 4
             out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
-        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
-        return {"sample": sample, "pred_xstart": out["pred_xstart"]}
+        sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise # step 5
+        return {"sample": sample, "pred_xstart": out["pred_xstart"]} # step 6, NOTE 有意思，有这6步就很好了!
 
     def p_sample_loop(
         self,
-        model,
-        shape,
-        noise=None,
-        clip_denoised=True,
-        denoised_fn=None,
-        cond_fn=None,
-        model_kwargs=None,
-        device=None,
-        progress=False,
+        model, # <class 'functools.partial'>
+        shape, # torch.Size([2, 4, 16, 32, 32]), shape of 'noise'
+        noise=None, # initial start for the video
+        clip_denoised=True, # False
+        denoised_fn=None, # None
+        cond_fn=None, # None
+        model_kwargs=None, # a dict with 'y': [2, 1, 120, 4096] and 'mask': [1, 120]
+        device=None, # 'cuda'
+        progress=False, # True
     ):
         """
         Generate samples from the model.
@@ -432,15 +432,15 @@ class GaussianDiffusion:
         """
         final = None
         for sample in self.p_sample_loop_progressive(
-            model,
-            shape,
+            model, # <class 'functools.partial'>
+            shape, # torch.Size([2, 4, 16, 32, 32]), noise的shape
             noise=noise,
-            clip_denoised=clip_denoised,
-            denoised_fn=denoised_fn,
-            cond_fn=cond_fn,
-            model_kwargs=model_kwargs,
-            device=device,
-            progress=progress,
+            clip_denoised=clip_denoised, # False
+            denoised_fn=denoised_fn, # None
+            cond_fn=cond_fn, # None
+            model_kwargs=model_kwargs, # a dict with 'y': [2, 1, 120, 4096] and 'mask': [1, 120]
+            device=device, # 'cuda'
+            progress=progress, # True
         ):
             final = sample
         return final["sample"]
@@ -466,21 +466,21 @@ class GaussianDiffusion:
         """
         if device is None:
             device = next(model.parameters()).device
-        assert isinstance(shape, (tuple, list))
+        assert isinstance(shape, (tuple, list)) # shape is a 'tuple' NOTE 这个有意思了，温故知新
         if noise is not None:
-            img = noise
+            img = noise # torch.Size([2, 4, 16, 32, 32])
         else:
-            img = th.randn(*shape, device=device)
-        indices = list(range(self.num_timesteps))[::-1]
+            img = th.randn(*shape, device=device) # 不会到这一步，这是根据给定的shape，重新生成噪音
+        indices = list(range(self.num_timesteps))[::-1] # self.num_timesteps=100，这是给倒序了一下，从99降序到0
 
-        if progress:
+        if progress: # True
             # Lazy import so that we don't depend on tqdm.
             from tqdm.auto import tqdm
 
             indices = tqdm(indices)
 
         for i in indices:
-            t = th.tensor([i] * shape[0], device=device)
+            t = th.tensor([i] * shape[0], device=device) # th = torch; t=tensor([99, 99], device='cuda:0')
             with th.no_grad():
                 out = self.p_sample(
                     model,

@@ -316,4 +316,4 @@ class T5Encoder:
 
     def null(self, n):
         null_y = self.y_embedder.y_embedding[None].repeat(n, 1, 1)[:, None]
-        return null_y
+        return null_y # shape = [1, 1, 120, 4096], here n=1 for one prompt
