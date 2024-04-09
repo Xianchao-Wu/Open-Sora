@@ -372,8 +372,8 @@ class T2IFinalLayer(nn.Module):
 
     def forward(self, x, t):
         shift, scale = (self.scale_shift_table[None] + t[:, None]).chunk(2, dim=1)
-        x = t2i_modulate(self.norm_final(x), shift, scale)
-        x = self.linear(x)
+        x = t2i_modulate(self.norm_final(x), shift, scale) # torch.Size([2, 4096, 1152])
+        x = self.linear(x) # -> torch.Size([2, 4096, 32])
         return x
 
 
@@ -397,7 +397,7 @@ class TimestepEmbedder(nn.Module):
         self.frequency_embedding_size = frequency_embedding_size # 256
 
     @staticmethod
-    def timestep_embedding(t, dim, max_period=10000):
+    def timestep_embedding(t, dim, max_period=10000): # t=tensor([999., 999.], device='cuda:0', dtype=torch.float16); dim=256
         """
         Create sinusoidal timestep embeddings.
         :param t: a 1-D Tensor of N indices, one per batch element.
@@ -407,21 +407,21 @@ class TimestepEmbedder(nn.Module):
         :return: an (N, D) Tensor of positional embeddings.
         """
         # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
-        half = dim // 2
+        half = dim // 2 # 128
         freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half)
         freqs = freqs.to(device=t.device)
-        args = t[:, None].float() * freqs[None]
-        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-        if dim % 2:
+        args = t[:, None].float() * freqs[None] # [2, 1] * [1, 128] -> [2, 128]
+        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1) # NOTE cos and sin -> [2, 256]
+        if dim % 2: # not in, since dim=256, dim%2=0 not 1, and 只有dim为奇数的时候，才会进入下面的代码：
             embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-        return embedding
+        return embedding # [2, 256]
 
     def forward(self, t, dtype):
-        t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
+        t_freq = self.timestep_embedding(t, self.frequency_embedding_size) # 先搞cos/sin的类似位置编码的逻辑，来对于时间步999进行embedding
         if t_freq.dtype != dtype:
             t_freq = t_freq.to(dtype)
-        t_emb = self.mlp(t_freq)
-        return t_emb
+        t_emb = self.mlp(t_freq) # linear -> SiLU -> linear，就得到了[2, 1152]这个张量
+        return t_emb # torch.Size([2, 1152])
 
 
 class LabelEmbedder(nn.Module):

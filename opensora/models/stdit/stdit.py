@@ -86,16 +86,16 @@ class STDiTBlock(nn.Module):
         )
 
     def forward(self, x, y, t, mask=None, tpe=None):
-        B, N, C = x.shape
+        B, N, C = x.shape # B=2, N=4096=16*256, C=1152
 
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
-            self.scale_shift_table[None] + t.reshape(B, 6, -1)
-        ).chunk(6, dim=1)
-        x_m = t2i_modulate(self.norm1(x), shift_msa, scale_msa)
+            self.scale_shift_table[None] + t.reshape(B, 6, -1) # t -> [2, 6, 1152]
+        ).chunk(6, dim=1) # NOTE 上面6个变量的形状都是[2, 1, 1152]
+        x_m = t2i_modulate(self.norm1(x), shift_msa, scale_msa) # NOTE TODO for what? why? -> x_m.shape=[2, 4096, 1152]，简单理解就是给当前的视频张量，加入时间步信息！
 
         # spatial branch
-        x_s = rearrange(x_m, "B (T S) C -> (B T) S C", T=self.d_t, S=self.d_s)
-        x_s = self.attn(x_s)
+        x_s = rearrange(x_m, "B (T S) C -> (B T) S C", T=self.d_t, S=self.d_s) # torch.Size([2, 4096, 1152]) -> [32, 256, 1152] 把Batch和Time乘积在一起，暴露S=spatial，然后做事情，good idea！
+        x_s = self.attn(x_s) # NOTE torch.Size([32, 256, 1152]) -> torch.Size([32, 256, 1152])
         x_s = rearrange(x_s, "(B T) S C -> B (T S) C", T=self.d_t, S=self.d_s)
         x = x + self.drop_path(gate_msa * x_s)
 
@@ -103,16 +103,16 @@ class STDiTBlock(nn.Module):
         x_t = rearrange(x, "B (T S) C -> (B S) T C", T=self.d_t, S=self.d_s)
         if tpe is not None:
             x_t = x_t + tpe
-        x_t = self.attn_temp(x_t)
+        x_t = self.attn_temp(x_t) # torch.Size([512, 16, 1152])
         x_t = rearrange(x_t, "(B S) T C -> B (T S) C", T=self.d_t, S=self.d_s)
-        x = x + self.drop_path(gate_msa * x_t)
+        x = x + self.drop_path(gate_msa * x_t) # -> torch.Size([2, 4096, 1152])
 
         # cross attn
         x = x + self.cross_attn(x, y, mask)
 
         # mlp
         x = x + self.drop_path(gate_mlp * self.mlp(t2i_modulate(self.norm2(x), shift_mlp, scale_mlp)))
-
+        # 
         return x
 
 
@@ -225,30 +225,30 @@ class STDiT(nn.Module):
             x (torch.Tensor): output latent representation; of shape [B, C, T, H, W]
         """
 
-        x = x.to(self.dtype)
+        x = x.to(self.dtype) # torch.Size([2, 4, 16, 32, 32])
         timestep = timestep.to(self.dtype)
         y = y.to(self.dtype)
 
         # embedding
-        x = self.x_embedder(x)  # [B, N, C]
-        x = rearrange(x, "B (T S) C -> B T S C", T=self.num_temporal, S=self.num_spatial)
-        x = x + self.pos_embed
-        x = rearrange(x, "B T S C -> B (T S) C")
+        x = self.x_embedder(x)  # out=[Batch, N=Temporal*Spatial, Channel] NOTE
+        x = rearrange(x, "B (T S) C -> B T S C", T=self.num_temporal, S=self.num_spatial) # [2, 4096, 1152] -> torch.Size([2, 16, 256, 1152])
+        x = x + self.pos_embed # [2, 16, 256, 1152]
+        x = rearrange(x, "B T S C -> B (T S) C") # -> torch.Size([2, 4096, 1152])，这是把Time维度和space维度合并了，有意思
 
-        # shard over the sequence dim if sp is enabled
-        if self.enable_sequence_parallelism:
+        # shard over the sequence dim if sp=sequence parallel is enabled
+        if self.enable_sequence_parallelism: # NOTE false, not in
             x = split_forward_gather_backward(x, get_sequence_parallel_group(), dim=1, grad_scale="down")
 
         t = self.t_embedder(timestep, dtype=x.dtype)  # [B, C]
-        t0 = self.t_block(t)  # [B, C]
-        y = self.y_embedder(y, self.training)  # [B, 1, N_token, C]
+        t0 = self.t_block(t)  # [B, C], [2, 1152] -> [2, 6912]
+        y = self.y_embedder(y, self.training)  # [B, 1, N_token, C] from [2, 1, 120, 4096] -> []
 
         if mask is not None:
             if mask.shape[0] != y.shape[0]:
-                mask = mask.repeat(y.shape[0] // mask.shape[0], 1)
+                mask = mask.repeat(y.shape[0] // mask.shape[0], 1) # 目前是mask.shape=[1, 120], 因为我们一直准备的是copy a sequence，然后捏造出来batch-size=2，所以这里mask扩充一下，没毛病。
             mask = mask.squeeze(1).squeeze(1)
-            y = y.squeeze(1).masked_select(mask.unsqueeze(-1) != 0).view(1, -1, x.shape[-1])
-            y_lens = mask.sum(dim=1).tolist()
+            y = y.squeeze(1).masked_select(mask.unsqueeze(-1) != 0).view(1, -1, x.shape[-1]) # NOTE 牛逼代码 -> y.shape=[1, 240, 1152]
+            y_lens = mask.sum(dim=1).tolist() # [120, 120], since mask.shape=[2, 120]
         else:
             y_lens = [y.shape[2]] * y.shape[0]
             y = y.squeeze(1).view(1, -1, x.shape[-1])
@@ -256,27 +256,27 @@ class STDiT(nn.Module):
         # blocks
         for i, block in enumerate(self.blocks):
             if i == 0:
-                if self.enable_sequence_parallelism:
+                if self.enable_sequence_parallelism: # False, not in
                     tpe = torch.chunk(
                         self.pos_embed_temporal, dist.get_world_size(get_sequence_parallel_group()), dim=1
                     )[self.sp_rank].contiguous()
                 else:
-                    tpe = self.pos_embed_temporal
+                    tpe = self.pos_embed_temporal # tpe = temporal positional embedding, torch.Size([1, 16, 1152])
             else:
                 tpe = None
             x = auto_grad_checkpoint(block, x, y, t0, y_lens, tpe)
 
-        if self.enable_sequence_parallelism:
+        if self.enable_sequence_parallelism: # False, not in
             x = gather_forward_split_backward(x, get_sequence_parallel_group(), dim=1, grad_scale="up")
         # x.shape: [B, N, C]
 
         # final process
-        x = self.final_layer(x, t)  # [B, N, C=T_p * H_p * W_p * C_out]
+        x = self.final_layer(x, t)  # [B, N, C=T_p * H_p * W_p * C_out] -> torch.Size([2, 4096, 32])
         x = self.unpatchify(x)  # [B, C_out, T, H, W]
 
         # cast to float32 for better accuracy
         x = x.to(torch.float32)
-        return x
+        return x # torch.Size([2, 8, 16, 32, 32])
 
     def unpatchify(self, x):
         """

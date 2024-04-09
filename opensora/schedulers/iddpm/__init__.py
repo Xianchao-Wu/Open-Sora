@@ -85,9 +85,10 @@ class IDDPM(SpacedDiffusion):
 def forward_with_cfg(model, x, timestep, y, cfg_scale, **kwargs):
     import ipdb; ipdb.set_trace()
     # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
-    half = x[: len(x) // 2]
-    combined = torch.cat([half, half], dim=0)
-    model_out = model.forward(combined, timestep, y, **kwargs)
+    half = x[: len(x) // 2] # len(x)=2; shape=torch.Size([1, 4, 16, 32, 32])
+    combined = torch.cat([half, half], dim=0) # torch.Size([2, 4, 16, 32, 32])
+    model_out = model.forward(combined, timestep, y, **kwargs) # NOTE important!
+    import ipdb; ipdb.set_trace()
     model_out = model_out["x"] if isinstance(model_out, dict) else model_out
     eps, rest = model_out[:, :3], model_out[:, 3:]
     cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
