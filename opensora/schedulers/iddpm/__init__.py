@@ -87,12 +87,12 @@ def forward_with_cfg(model, x, timestep, y, cfg_scale, **kwargs):
     # https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb
     half = x[: len(x) // 2] # len(x)=2; shape=torch.Size([1, 4, 16, 32, 32])
     combined = torch.cat([half, half], dim=0) # torch.Size([2, 4, 16, 32, 32])
-    model_out = model.forward(combined, timestep, y, **kwargs) # NOTE important!
+    model_out = model.forward(combined, timestep, y, **kwargs) # NOTE important! -> model_out.shape=torch.Size([2, 8, 16, 32, 32])
     import ipdb; ipdb.set_trace()
     model_out = model_out["x"] if isinstance(model_out, dict) else model_out
     eps, rest = model_out[:, :3], model_out[:, 3:]
-    cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
+    cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0) # both are [1, 3, 16, 32, 32]
     half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
     eps = torch.cat([half_eps, half_eps], dim=0)
-    return torch.cat([eps, rest], dim=1)
+    return torch.cat([eps, rest], dim=1) # [2, 8, 16, 32, 32]
 

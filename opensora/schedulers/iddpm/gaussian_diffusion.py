@@ -264,21 +264,21 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2] # B for batch, C for channel, currently B=2, C=4
         assert t.shape == (B,)
-        model_output = model(x, t, **model_kwargs) # NOTE 这个非常重要了！
+        model_output = model(x, t, **model_kwargs) # NOTE 这个非常重要了！ torch.Size([2, 8, 16, 32, 32]) = model_output.shape
         if isinstance(model_output, tuple):
             model_output, extra = model_output
         else:
-            extra = None
+            extra = None # NOTE here
 
-        if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
+        if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]: # in, <ModelVarType.LEARNED_RANGE: 4>
             assert model_output.shape == (B, C * 2, *x.shape[2:])
-            model_output, model_var_values = th.split(model_output, C, dim=1)
-            min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
-            max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
+            model_output, model_var_values = th.split(model_output, C, dim=1) # 两者都是 torch.Size([2, 4, 16, 32, 32]), NOTE model_var_values是预测出来的模型的方差啊！有意思了
+            min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape) # torch.Size([2, 4, 16, 32, 32])
+            max_log = _extract_into_tensor(np.log(self.betas), t, x.shape) # torch.Size([2, 4, 16, 32, 32])
             # The model_var_values is [-1, 1] for [min_var, max_var].
             frac = (model_var_values + 1) / 2
             model_log_variance = frac * max_log + (1 - frac) * min_log
-            model_variance = th.exp(model_log_variance)
+            model_variance = th.exp(model_log_variance) # torch.Size([2, 4, 16, 32, 32]) -> exp
         else:
             model_variance, model_log_variance = {
                 # for fixedlarge, we set the initial (log-)variance like so
@@ -296,16 +296,16 @@ class GaussianDiffusion:
             model_log_variance = _extract_into_tensor(model_log_variance, t, x.shape)
 
         def process_xstart(x):
-            if denoised_fn is not None:
+            if denoised_fn is not None: # is None, so not in
                 x = denoised_fn(x)
-            if clip_denoised:
+            if clip_denoised: # False
                 return x.clamp(-1, 1)
-            return x
+            return x # torch.Size([2, 4, 16, 32, 32]) for x_0
 
-        if self.model_mean_type == ModelMeanType.START_X:
+        if self.model_mean_type == ModelMeanType.START_X: # <ModelMeanType.EPSILON: 3>
             pred_xstart = process_xstart(model_output)
         else:
-            pred_xstart = process_xstart(self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output))
+            pred_xstart = process_xstart(self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)) # NOTE here
         model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
 
         assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
@@ -322,7 +322,7 @@ class GaussianDiffusion:
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
             - _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * eps
-        )
+        ) # https://arxiv.org/pdf/2010.02502.pdf, from DDIM, Equation 12, NOTE
 
     def _predict_eps_from_xstart(self, x_t, t, pred_xstart):
         return (
@@ -830,6 +830,7 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
     :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
     """
     res = th.from_numpy(arr).to(device=timesteps.device)[timesteps].float()
-    while len(res.shape) < len(broadcast_shape):
-        res = res[..., None]
-    return res + th.zeros(broadcast_shape, device=timesteps.device)
+    while len(res.shape) < len(broadcast_shape): # 1 < 5
+        res = res[..., None] # [2] -> [2, 1] -> [2, 1, 1] -> [2, 1, 1, 1] -> ... -> [2, 1, 1, 1, 1]
+    return res + th.zeros(broadcast_shape, device=timesteps.device) # 为啥要加个zeros呢？是扩充，从[2, 1, 1, 1, 1] + [2, 4, 16, 32, 32] -> [2, 4, 16, 32, 32]有意思。
+
