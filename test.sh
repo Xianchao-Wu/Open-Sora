@@ -8,13 +8,14 @@
 # Sample 16x256x256 (5s/sample, 100 time steps, 22 GB memory)
 sora_ckpt=/workspace/asr/Open-Sora/pretrained_models/Open-Sora/OpenSora-v1-16x256x256.pth
 
+#CUDA_AVAILABLE_DEVICES=7 
 torchrun --standalone --nproc_per_node 1 scripts/inference.py configs/opensora/inference/16x256x256.py --ckpt-path ${sora_ckpt} --prompt-path ./assets/texts/t2v_samples.txt
 
 exit 0
 
 #torchrun --standalone --nproc_per_node 1 
 
-python -m ipdb scripts/inference.py \
+CUDA_AVAILABLE_DEVICES=7 python scripts/inference.py \
 	configs/opensora/inference/16x256x256.py \
 	--ckpt-path ${sora_ckpt} \
 	--prompt-path ./assets/texts/t2v_samples.txt

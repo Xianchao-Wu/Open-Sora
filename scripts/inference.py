@@ -1,4 +1,5 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 import torch
 import colossalai
@@ -104,11 +105,11 @@ def main():
             prompts=batch_prompts,
             device=device, # 'cuda'
             additional_args=model_args, # {}
-        )
+        ) # out, samples.shape = torch.Size([1, 4, 16, 32, 32]) NOTE
         import ipdb; ipdb.set_trace()
         samples = vae.decode(samples.to(dtype))
 
-        if coordinator.is_master():
+        if coordinator.is_master(): # coordinator = 协调员，如果目前是主线故事，那就保存视频张量到文件~~
             for idx, sample in enumerate(samples):
                 print(f"Prompt: {batch_prompts[idx]}")
                 save_path = os.path.join(save_dir, f"sample_{sample_idx}")

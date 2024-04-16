@@ -34,21 +34,21 @@ class VideoAutoencoderKL(nn.Module):
         return x
 
     def decode(self, x):
-        # x: (B, C, T, H, W)
+        # x: (B, C, T, H, W), e.g., torch.Size([1, 4, 16, 32, 32])
         B = x.shape[0]
-        x = rearrange(x, "B C T H W -> (B T) C H W")
+        x = rearrange(x, "B C T H W -> (B T) C H W") # torch.Size([16, 4, 32, 32])
         if self.micro_batch_size is None:
             x = self.module.decode(x / 0.18215).sample
         else:
-            bs = self.micro_batch_size
+            bs = self.micro_batch_size # 4 NOTE
             x_out = []
-            for i in range(0, x.shape[0], bs):
-                x_bs = x[i : i + bs]
-                x_bs = self.module.decode(x_bs / 0.18215).sample
+            for i in range(0, x.shape[0], bs): # 0 to 16, with step=4
+                x_bs = x[i : i + bs] # torch.Size([4, 4, 32, 32])
+                x_bs = self.module.decode(x_bs / 0.18215).sample # NOTE
                 x_out.append(x_bs)
-            x = torch.cat(x_out, dim=0)
+            x = torch.cat(x_out, dim=0) # torch.Size([16, 3, 256, 256]) = x.shape
         x = rearrange(x, "(B T) C H W -> B C T H W", B=B)
-        return x
+        return x # torch.Size([1, 3, 16, 256, 256]) NOTE
 
     def get_latent_size(self, input_size):
         for i in range(3):
