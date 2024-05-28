@@ -138,6 +138,8 @@ class Attention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        import ipdb; ipdb.set_trace()
+        self.enable_flashattn = True # NOTE learn flash attention here
         B, N, C = x.shape
         qkv = self.qkv(x)
         qkv_shape = (B, N, 3, self.num_heads, self.head_dim)
@@ -273,6 +275,7 @@ class MultiHeadCrossAttention(nn.Module):
 
     def forward(self, x, cond, mask=None):
         # query/value: img tokens; key: condition; mask: if padding tokens
+        import ipdb; ipdb.set_trace() # NOTE why flash attention is not explicitly used here?
         B, N, C = x.shape
 
         q = self.q_linear(x).view(1, -1, self.num_heads, self.head_dim)
@@ -280,8 +283,10 @@ class MultiHeadCrossAttention(nn.Module):
         k, v = kv.unbind(2)
 
         attn_bias = None
+        import ipdb; ipdb.set_trace()
         if mask is not None:
             attn_bias = xformers.ops.fmha.BlockDiagonalMask.from_seqlens([N] * B, mask)
+
         x = xformers.ops.memory_efficient_attention(q, k, v, p=self.attn_drop.p, attn_bias=attn_bias)
 
         x = x.view(B, -1, C)

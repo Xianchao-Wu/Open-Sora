@@ -253,7 +253,7 @@ class STDiT(nn.Module):
             y_lens = [y.shape[2]] * y.shape[0]
             y = y.squeeze(1).view(1, -1, x.shape[-1])
 
-        # blocks
+        # e.g., 28 blocks
         for i, block in enumerate(self.blocks):
             if i == 0:
                 if self.enable_sequence_parallelism: # False, not in

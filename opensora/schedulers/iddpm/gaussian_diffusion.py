@@ -305,7 +305,7 @@ class GaussianDiffusion:
         if self.model_mean_type == ModelMeanType.START_X: # <ModelMeanType.EPSILON: 3>
             pred_xstart = process_xstart(model_output)
         else:
-            pred_xstart = process_xstart(self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)) # NOTE here
+            pred_xstart = process_xstart(self._predict_xstart_from_eps(x_t=x, t=t, eps=model_output)) # NOTE here, 需要注意的是，这里的model_output=epsilon，是预测出来的噪音!!! 这个非常重要!
         model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
 
         assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
@@ -483,13 +483,13 @@ class GaussianDiffusion:
             t = th.tensor([i] * shape[0], device=device) # th = torch; t=tensor([99, 99], device='cuda:0')
             with th.no_grad():
                 out = self.p_sample(
-                    model,
-                    img,
-                    t,
+                    model, # NOTE STDiT 扩散transformer 
+                    img, # NOTE 目前为止生成的image
+                    t, # NOTE, time information
                     clip_denoised=clip_denoised,
                     denoised_fn=denoised_fn,
                     cond_fn=cond_fn,
-                    model_kwargs=model_kwargs,
+                    model_kwargs=model_kwargs, # NOTE 文本信息张量prompts
                 )
                 yield out
                 img = out["sample"]
